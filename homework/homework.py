@@ -3,7 +3,10 @@ Escriba el codigo que ejecute la accion solicitada.
 """
 
 # pylint: disable=import-outside-toplevel
-
+import pandas as pd
+import zipfile
+import os
+from glob import glob
 
 def clean_campaign_data():
     """
@@ -49,6 +52,53 @@ def clean_campaign_data():
 
 
     """
+
+    os.makedirs("files/output", exist_ok=True)
+    
+    all_dfs = []
+    
+    zip_files = glob("files/input/*.zip")
+    
+    for zip_file in zip_files:
+        with zipfile.ZipFile(zip_file, 'r') as z:
+            csv_name = z.namelist()[0]
+            with z.open(csv_name) as f:
+                df = pd.read_csv(f)
+                all_dfs.append(df)
+    
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    
+    client_df = combined_df[['client_id', 'age', 'job', 'marital', 'education', 'credit_default', 'mortgage']].copy()
+    
+    client_df['job'] = client_df['job'].str.replace('.', '').str.replace('-', '_')
+    client_df['education'] = client_df['education'].str.replace('.', '_').replace('unknown', pd.NA)
+    client_df['credit_default'] = (client_df['credit_default'] == 'yes').astype(int)
+    client_df['mortgage'] = (client_df['mortgage'] == 'yes').astype(int)
+    
+    campaign_df = combined_df[['client_id', 'number_contacts', 'contact_duration', 
+                               'previous_campaign_contacts', 'previous_outcome', 'campaign_outcome',
+                               'month', 'day']].copy()
+    
+    campaign_df['previous_outcome'] = (campaign_df['previous_outcome'] == 'success').astype(int)
+    campaign_df['campaign_outcome'] = (campaign_df['campaign_outcome'] == 'yes').astype(int)
+    
+    month_map = {
+        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
+        'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+    }
+    
+    campaign_df['month_num'] = campaign_df['month'].map(month_map)
+    campaign_df['last_contact_date'] = '2022-' + campaign_df['month_num'] + '-' + campaign_df['day'].astype(str).str.zfill(2)
+    
+    campaign_df = campaign_df[['client_id', 'number_contacts', 'contact_duration', 
+                               'previous_campaign_contacts', 'previous_outcome', 'campaign_outcome',
+                               'last_contact_date']]
+    
+    economics_df = combined_df[['client_id', 'cons_price_idx', 'euribor_three_months']].copy()
+    
+    client_df.to_csv("files/output/client.csv", index=False)
+    campaign_df.to_csv("files/output/campaign.csv", index=False)
+    economics_df.to_csv("files/output/economics.csv", index=False)
 
     return
 
